@@ -46,6 +46,29 @@ class HTTP2Frame():
         return raw
 
 
+class DATA(HTTP2Frame):
+    ftype = 0
+
+    # Flags
+    END_STREAM = 1
+    PADDED = 8
+
+    def __init__(self, length=0, flags=0, r=0, sid=0, payload=0):
+        HTTP2Frame.__init__(self, length=length, ftype=self.ftype, flags=flags, r=r, sid=sid, payload=payload)
+
+        self.end_stream = int(self.flags & self.END_STREAM != 0)
+        self.padded = int(self.flags & self.PADDED != 0)
+
+        if self.padded:
+            self.pad_length = self.payload[0]
+            self.payload = self.payload[1:0]
+            
+        self.data = self.payload
+
+        if self.padded:
+            self.data = self.data[:-self.pad_length]
+
+
 class HEADERS(HTTP2Frame):
     # TODO: CONTINUE?
 
@@ -83,6 +106,25 @@ class HEADERS(HTTP2Frame):
             self.header_block_fragment = self.header_block_fragment[:-self.pad_length]
         
 
+class PRIORITY(HTTP2Frame):
+    ftype = 2
+
+    def __init__(self, length=0, flags=0, r=0, sid=0, payload=0):
+        HTTP2Frame.__init__(self, length=length, ftype=self.ftype, flags=flags, r=r, sid=sid, payload=payload)
+
+        self.e = self.payload[1] >> 7
+        self.stream_dependency = int.from_bytes(self.payload[:4], 'big') & (2**32-1)
+        self.weight = self.payload[4]
+
+
+class RST_STREAM(HTTP2Frame):
+    ftype = 3
+
+    def __init__(self, length=0, flags=0, r=0, sid=0, payload=0):
+        HTTP2Frame.__init__(self, length=length, ftype=self.ftype, flags=flags, r=r, sid=sid, payload=payload)
+
+        self.error_code = self.payload
+
 
 class SETTINGS(HTTP2Frame):
     ftype = 4
@@ -109,6 +151,62 @@ class SETTINGS(HTTP2Frame):
         if self.sid != 0:
             pass
             # TODO: PROTOCOL_ERROR (6.5)
+
+
+class PUSH_PROMISE(HTTP2Frame):
+    ftype = 5
+
+    # Header flags
+    END_HEADER = 0x4
+    PADDED = 0x8
+
+    def __init__(self, length=0, flags=0, r=0, sid=0, payload=0):
+        HTTP2Frame.__init__(self, length=length, ftype=self.ftype, flags=flags, r=r, sid=sid, payload=payload)
+        
+        self.end_header = int(self.flags & self.END_HEADERS != 0)
+        self.padded = int(self.flags & self.PADDED != 0)
+
+        if self.padded:
+            self.pad_length = self.payload[0]
+            self.payload = self.payload[1:]
+
+        self.pp_r = self.payload[1] >> 7
+        self.promised_stream_id = int.from_bytes(self.payload[:4], 'big') & (2**32-1)
+        
+        self.header_block_fragment = self.payload
+        
+        if self.padded:
+            self.header_block_fragment = self.header_block_fragment[:-self.pad_length]
+
+
+class PING(HTTP2Frame):
+    ftype = 6
+
+    # Header flags
+    ACK = 1
+
+    def __init__(self, length=0, flags=0, r=0, sid=0, payload=0):
+        HTTP2Frame.__init__(self, length=length, ftype=self.ftype, flags=flags, r=r, sid=sid, payload=payload)
+
+        self.ack = int(self.flags & self.ACK != 0)
+
+        self.opaque_data = self.payload
+
+
+class GOAWAY(HTTP2Frame):
+    ftype = 7
+
+    def __init__(self, length=0, flags=0, r=0, sid=0, payload=0):
+        HTTP2Frame.__init__(self, length=length, ftype=self.ftype, flags=flags, r=r, sid=sid, payload=payload)
+
+        self.g_r = self.payload[0] >> 7
+        self.last_stream_id = int.from_bytes(self.payload[:4], 'big') & (2**32-1)
+        self.error_code = self.payload[4:8]
+        if len(self.payload) == 8:
+            self.additional_debug_data = ""
+        else:
+            self.additional_debug_data = self.payload[8:]
+
 
 class WINDOW_UPDATE(HTTP2Frame):
     ftype = 8

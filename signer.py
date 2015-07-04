@@ -63,7 +63,7 @@ class CertificateAuthority(object):
 
             # Generate CSR
             req = X509Req()
-            req.get_subject().CN = cn
+            req.get_subject().CN = str(cn)
             req.set_pubkey(key)
             req.sign(key, 'sha1')
 

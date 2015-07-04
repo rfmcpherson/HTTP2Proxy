@@ -1,3 +1,7 @@
+'''
+Used to keep track of state for client and server
+'''
+
 class Endpoint():
     def __init__(self):
         self.header_table_size = 4096
