@@ -10,15 +10,17 @@ PREFACE = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 # Class that handles a connections
 class Connection():
     def __init__(self, sock, verbose=False):
-        self.client = endpoint.Endpoint(sock)
+        self.client = endpoint.Endpoint(sock=sock, verbose=verbose)
         self.proxy = endpoint.Endpoint()
         self.verbose = verbose
 
     # Checks for the client's HTTP/2 preface
+    # TODO: What sid do we use here? 
     def _preface(self):
-        client_preface = PREFACE
-        data = self.client.read(24)
-        # TODO check the preface
+        data = self.client.recv(24)
+        if data != PREFACE:
+            f = frame.RST_STREAM(error_code=frame.RST_STREAM.PROTOCOL_ERROR)
+            client.send(f)
 
     # Processes a frame
     def _process_frame(self, data):
@@ -51,10 +53,7 @@ class Connection():
 
         # send empty frame
         f = frame.SETTINGS()
-        raw = f.raw_frame()
-        if self.verbose:
-            self.print_bytes("send", raw)
-        self.client.write(raw)
+        self.client.send(f)
 
         while(1):
             data = frame.read_frame(self.client)
@@ -107,10 +106,7 @@ class Connection():
 
         # Send ACK
         f = frame.SETTINGS(flags=frame.SETTINGS.ACK)
-        raw = f.raw_frame()
-        if self.verbose:
-            self.print_bytes("send", raw)
-        self.client.write(raw)
+        self.client.send(f)
 
     def do_WINDOW_UPDATE(self, f):
         # TODO: window going over 2**31-1 is error: close stream or connection (6.9.1)
@@ -130,3 +126,4 @@ class Connection():
             if count == 9 or (count-9)%20 == 0:
                 out += "\n\t"
         print(pre + "\n", out)
+        

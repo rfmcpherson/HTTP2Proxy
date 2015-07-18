@@ -1,6 +1,6 @@
 # Class that keeps state of an endpoint (client/server)
 class Endpoint():
-    def __init__(self, sock=None):
+    def __init__(self, sock=None, verbose=False):
         self.header_table_size = 4096
         self.enable_push = 1
         self.max_concurrent_streams = None
@@ -16,6 +16,8 @@ class Endpoint():
         if sock:
             self.set_sock(sock)
 
+        self.verbose = verbose
+
     def __str__(self):
         str = "{}\n".format(self.header_table_size)
         str += "{}\n".format(self.enable_push)
@@ -29,8 +31,12 @@ class Endpoint():
     def is_set(self):
         return (self.socket != None)
 
-    def read(self, size):
+    def recv(self, size):
         return self.from_fp.read(size)
+
+    def send(self, f):
+        raw = f.raw_frame()
+        self.to_fp.write(raw)
 
     # Sets the endpoint
     def set_sock(self, sock):
@@ -38,5 +44,3 @@ class Endpoint():
         self.from_fp = sock.makefile('rb',0)
         self.to_fp = sock.makefile('wb',0)
 
-    def write(self, buff):
-        self.to_fp.write(buff)
