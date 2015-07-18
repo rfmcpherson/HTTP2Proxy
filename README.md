@@ -1,6 +1,9 @@
 # HTTP2Proxy
 
-The start of an HTTP/2 proxy for Python 3. Currently relies on nghttp for compression and pymiproxy for the SSL signer.
+UNFINISHED: a work in progress.
+
+An HTTP/2 proxy for Python 3. 
+It currently relies on nghttp for compression and pymiproxy for the SSL signer. I do not own the license for signer.py.
 
 TODO:
 * Get basic proxy working
