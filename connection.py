@@ -1,5 +1,8 @@
+import collections
 import nghttp2
 import select
+import socket
+import ssl
 
 import endpoint
 from frame import *
@@ -11,11 +14,15 @@ STREAM_ERROR = 2
 
 # Class that handles a connections
 # TODO: multiprocessing???
+# TODO: I think I confused server and proxy in some points...
 class Connection():
     def __init__(self, sock, verbose=False):
         self.client = endpoint.Endpoint(sock=sock, verbose=verbose)
-        self.proxy = endpoint.Endpoint()
+        self.proxy = endpoint.Endpoint() # us
+        self.server = endpoint.Endpoint()
         self.verbose = verbose
+
+        self.active_from_fps = [self.client.from_fp]
 
     # TODO: this
     def _exit(self):
@@ -35,17 +42,17 @@ class Connection():
         if data[1] == HEADERS.ftype: # 1
             frame = HEADERS(data[0], data[2], data[3], data[4], data[5])
             if self.verbose:
-                self.print_bytes("recv (HEADER)", f.raw_frame())
+                self.print_bytes("recv (HEADER)", frame.raw_frame())
             err = self.do_HEADERS(frame, endpoint)
         elif data[1] == SETTINGS.ftype: # 4
             frame = SETTINGS(data[0], data[2], data[3], data[4], data[5])
             if self.verbose:
-                self.print_bytes("recv (SETTINGS)", f.raw_frame())
+                self.print_bytes("recv (SETTINGS)", frame.raw_frame())
             err = self.do_SETTINGS(frame, endpoint)
         elif data[1] == WINDOW_UPDATE.ftype: # 8
             frame = WINDOW_UPDATE(data[0], data[2], data[3], data[4], data[5])
             if self.verbose:
-                self.print_bytes("recv (WINDOW UPDATE)", f.raw_frame())
+                self.print_bytes("recv (WINDOW UPDATE)", frame.raw_frame())
             err = self.do_WINDOW_UPDATE(frame, endpoint)
         else:
             print("UNKNOWN TYPE:", data)
@@ -64,7 +71,7 @@ class Connection():
         # Read the first frame
         # TODO: check if SETTINGS
         data = read_frame(self.client)
-        self._process_frame(data)
+        self._process_frame(data, self.client)
 
         # send empty frame
         f = SETTINGS()
@@ -72,7 +79,7 @@ class Connection():
 
         # TODO: better
         while(1):
-            r, _, _ = select.select([self.client.from_fp, self.server.from_f])
+            r, _, _ = select.select(self.active_from_fps, [], [])
             if self.client.from_fp in r:
                 data = read_frame(self.client)
                 err = self._process_frame(data, self.client)
@@ -86,12 +93,48 @@ class Connection():
                     pass
                     # TODO
 
-    def do_HEADERS(self, header, endpoint):
+    def do_HEADERS(self, headers, endpoint):
         # TODO: header flags
+        # TODO: CONTINUEs
+        # TODO: can we move this? (prob ties in with above)
+
+        # Decompress the header
         inflater = nghttp2.HDInflater()
-        hdrs = inflater.inflate(header.header_block_fragment)
+        # TODO: should we add this back?
+        hdrs = inflater.inflate(headers.header_block_fragment)
+        hdrs = dict(hdrs)
         if self.verbose:
-            print(hdrs)
+            for k in hdrs:
+                print("\t\t",k,":",hdrs[k])
+        
+        if hdrs[b":method"] == b"CONNECT": # What we expect
+            # TODO: must be client
+            # TODO: expect :method and :authority.
+            #       no :scheme and :path (8.1.2.6)
+            # TODO: Handle http/1.1 and http/1.0
+            # TODO: Connection reuse
+            
+            # Connect to :authority
+            # TODO: correct parsing
+            server, port = hdrs[b":authority"].split(b":")
+            sock = socket.socket()
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.connect((server, int(port,10)))
+
+            # Wrap it with SSL
+            # TODO: CONFIRM SSL
+            sock = ssl.wrap_socket(sock)
+
+            # Update our variables
+            self.server.set_sock(sock)
+            self.active_from_fps.append(self.server.from_fp)
+
+            # TODO: Do I need one of these for each endpoint-proxy connection?
+            payload = self.proxy.compress([(b":status",b"200")])
+            print(payload)
+            response = HEADERS(flags=HEADERS.END_HEADERS, sid=headers.sid,
+                               payload=payload)
+            endpoint.send(response)
 
     def do_SETTINGS(self, setting, endpoint):
         # TODO: Do we drop the entire packet over one bad iden/val key?

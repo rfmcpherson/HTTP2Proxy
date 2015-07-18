@@ -1,10 +1,10 @@
 import argparse
 import select
-import signer
 import socket
 import ssl
 
 import connection
+import signer
 
 PROTOCOL = 'h2-14'
 

@@ -1,3 +1,5 @@
+import nghttp2
+
 # Class that keeps state of an endpoint (client/server)
 class Endpoint():
     def __init__(self, sock=None, verbose=False):
@@ -16,6 +18,10 @@ class Endpoint():
         if sock:
             self.set_sock(sock)
 
+        # TODO: code to make sure HDDeflator default size is 4096
+        # TODO: what happens if size changes later???
+        self.compressor = nghttp2.HDDeflater()
+
         self.verbose = verbose
 
     def __str__(self):
@@ -26,6 +32,9 @@ class Endpoint():
         str += "{}\n".format(self.max_frame_size)
         str += "{}\n".format(self.max_header_list_size)
         return str
+
+    def compress(self, data):
+        return self.compressor.deflate(data)
 
     # Has the endpoint been seeded with a socket
     def is_set(self):
