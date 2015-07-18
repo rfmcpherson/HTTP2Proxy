@@ -1,11 +1,11 @@
-def read_frame(infile):
-    header = infile.read(9)
+def read_frame(endpoint):
+    header = endpoint.read(9)
     length = int.from_bytes(header[:3],'big')
     ftype = header[3]
     flags = header[4]
     r = header[5] & 8 
     sid = int.from_bytes(header[5:],'big') & 2**32-1
-    payload = infile.read(length)
+    payload = endpoint.read(length)
     return [length, ftype, flags, r, sid, payload]
 
 

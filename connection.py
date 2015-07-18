@@ -3,33 +3,39 @@ import nghttp2
 import endpoint
 import frame
 
+PREFACE = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 
 # TODO: better handling of send/recv
 
+# Class that handles a connections
 class Connection():
-    def __init__(self, sock):
-        self.client_in = sock.makefile('rb',0)
-        self.client_out = sock.makefile('wb',0)
-        self.client = endpoint.Endpoint()
+    def __init__(self, sock, verbose=False):
+        self.client = endpoint.Endpoint(sock)
         self.proxy = endpoint.Endpoint()
+        self.verbose = verbose
 
+    # Checks for the client's HTTP/2 preface
     def _preface(self):
-        client_preface = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
-        data = self.client_in.read(24)
+        client_preface = PREFACE
+        data = self.client.read(24)
         # TODO check the preface
 
+    # Processes a frame
     def _process_frame(self, data):
         if data[1] == frame.HEADERS.ftype: # 1
             f = frame.HEADERS(data[0], data[2], data[3], data[4], data[5])
-            self.print_bytes("recv", f.raw_frame())
+            if self.verbose:
+                self.print_bytes("recv (HEADER)", f.raw_frame())
             self.do_HEADERS(f)
         elif data[1] == frame.SETTINGS.ftype: # 4
             f = frame.SETTINGS(data[0], data[2], data[3], data[4], data[5])
-            self.print_bytes("recv", f.raw_frame())
+            if self.verbose:
+                self.print_bytes("recv (SETTINGS)", f.raw_frame())
             self.do_SETTINGS(f)
         elif data[1] == frame.WINDOW_UPDATE.ftype: # 8
             f = frame.WINDOW_UPDATE(data[0], data[2], data[3], data[4], data[5])
-            self.print_bytes("recv", f.raw_frame())
+            if self.verbose:
+                self.print_bytes("recv (WINDOW UPDATE)", f.raw_frame())
             self.do_WINDOW_UPDATE(f)
         else:
             print("UNKNOWN TYPE:", data)
@@ -40,25 +46,26 @@ class Connection():
 
         # Read the first frame
         # TODO: check if SETTINGS
-        data = frame.read_frame(self.client_in)
+        data = frame.read_frame(self.client)
         self._process_frame(data)
 
         # send empty frame
         f = frame.SETTINGS()
         raw = f.raw_frame()
-        self.print_bytes("send", raw)
-        self.client_out.write(raw)
+        if self.verbose:
+            self.print_bytes("send", raw)
+        self.client.write(raw)
 
         while(1):
-            data = frame.read_frame(self.client_in)
+            data = frame.read_frame(self.client)
             self._process_frame(data)
 
     def do_HEADERS(self, f):
         # TODO: header flags
         inflater = nghttp2.HDInflater()
-        print(type(f.payload))
         hdrs = inflater.inflate(f.header_block_fragment)
-        print(hdrs)
+        if self.verbose:
+            print(hdrs)
 
     def do_SETTINGS(self, f):
         # TODO: Do we drop the entire packet over one bad iden/val key?
@@ -101,8 +108,9 @@ class Connection():
         # Send ACK
         f = frame.SETTINGS(flags=frame.SETTINGS.ACK)
         raw = f.raw_frame()
-        self.print_bytes("send", raw)
-        self.client_out.write(raw)
+        if self.verbose:
+            self.print_bytes("send", raw)
+        self.client.write(raw)
 
     def do_WINDOW_UPDATE(self, f):
         # TODO: window going over 2**31-1 is error: close stream or connection (6.9.1)
@@ -113,12 +121,12 @@ class Connection():
 
     def print_bytes(self, pre, s):
         # Nicely prints out raw frames
-        out = ""
+        out = "\t"
         count = 0
         for c in s:
             out += "\\x{:02x}".format(c)
             count += 1
             # Newline after header or every 20 bytes in the payload
             if count == 9 or (count-9)%20 == 0:
-                out += "\n" + " "*(len(pre)+1)
-        print(pre, out)
+                out += "\n\t"
+        print(pre + "\n", out)
