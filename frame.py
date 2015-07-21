@@ -24,10 +24,10 @@ class HTTP2Frame():
         # TODO: check if ftype is None
 
     def __str__(self):
-        ret = "{}\n".format(self.length)
-        ret += "{} {}\n".format(self.ftype, self.flags)
-        ret += "{} {}\n".format(self.r, self.sid)
-        ret += "{}".format(self.payload)
+        ret = "Length: {}\n".format(self.length)
+        ret += "Ftype: {} Flags: {}\n".format(self.ftype, '{0:07b}'.format(self.flags))
+        ret += "R: {}     Sid:{}".format(self.r, self.sid)
+        #ret += "Payload: {}".format(self.payload)
         return ret
 
     def from_raw(self, raw):
@@ -71,6 +71,17 @@ class DATA(HTTP2Frame):
         if self.padded:
             self.data = self.data[:-self.pad_length]
 
+    def __str__(self):
+        str_header = super().__str__()
+
+        str_flags =  "End Stream:  {}\n".format(bool(self.end_stream))
+        str_flags += "Priority:    {}\n".format(bool(self.priority))
+
+        str_data = self.data
+
+        return "DATA\n{}\n{}\nData:\n{}".format(str_header, str_flags, str_headers)
+
+
 class HEADERS(HTTP2Frame):
     # TODO: CONTINUE?
 
@@ -108,7 +119,17 @@ class HEADERS(HTTP2Frame):
             self.header_block_fragment = self.header_block_fragment[:-self.pad_length]
 
     def __str__(self):
-        pass
+        str_header = super().__str__()
+
+        str_flags =  "End Stream:  {}\n".format(bool(self.end_stream))
+        str_flags += "End Headers: {}\n".format(bool(self.end_headers))
+        str_flags += "Padded:      {}\n".format(bool(self.padded))
+        str_flags += "Priority:    {}\n".format(bool(self.priority))
+
+        # ew... naming scheme...
+        str_headers = self.header_block_fragment
+
+        return "HEADERS\n{}\n{}\nHeader Block Fragment:\n{}".format(str_header, str_flags, str_headers)
 
 class PRIORITY(HTTP2Frame):
     ftype = 2
@@ -119,6 +140,15 @@ class PRIORITY(HTTP2Frame):
         self.e = self.payload[1] >> 7
         self.stream_dependency = int.from_bytes(self.payload[:4], 'big') & (2**32-1)
         self.weight = self.payload[4]
+
+    def __str__(self):
+        str_header = super().__str__()
+
+        str_e =     "Exclusive:        {}\n".format(bool(e))
+        str_depen = "Stream Dependeny: {}\n".format(self.stream_dependency)
+        str_weight = "Weight:          {}\n".format(self.weight)
+
+        return "PRIORITY\n{}{}{}{}".format(str_header, str_e, str_depen, str_weight)
 
 
 class RST_STREAM(HTTP2Frame):
@@ -141,10 +171,28 @@ class RST_STREAM(HTTP2Frame):
     INADEQUATE_SECURITY =  0xd
     HTTP_1_1_REQUIRED =    0xe
 
+    REVERSE_ERROR = {
+        0x0:"NO_ERROR", 0x1:"PROTOCOL_ERROR", 0x2:"INTERNAL_ERROR", 
+        0x3:"FLOW_CONTROL_ERROR", 0x4:"FLOW_CONTROL_ERROR", 
+        0x5:"SETTINGS_TIMEOUT", 0x6:"STREAM_CLOSED", 
+        0x7:"FRAME_SIZE_ERROR", 0x8:"REFUSED_STREAM", 
+        0x9:"CANCEL", 0xa:"COMPRESSION_ERROR", 0xb:"CONNECT_ERROR", 
+        0xc:"ENHANCE_YOUR_CALM", 0xd:"INADEQUATE_SECURITY", 
+        0xe:"HTTP_1_1_REQUIRED"}
+
+
     def __init__(self, length=0, flags=0, r=0, sid=0, error_code=''):
         HTTP2Frame.__init__(self, length=length, ftype=self.ftype, flags=flags, r=r, sid=sid, payload=error_code)
 
         self.error_code = error_code
+
+    def __str__(self):
+        str_header = super().__str__()
+
+        str_error = "Error:   {}\n".format()
+
+        return "PRIORITY\n{}{}{}{}".format(str_header, str_e, str_depen, str_weight)
+
 
 
 class SETTINGS(HTTP2Frame):

@@ -43,6 +43,7 @@ class Connection():
             frame = HEADERS(data[0], data[2], data[3], data[4], data[5])
             if self.verbose:
                 self.print_bytes("recv (HEADER)", frame.raw_frame())
+                self.print_frame(frame)
             err = self.do_HEADERS(frame, endpoint)
         elif data[1] == SETTINGS.ftype: # 4
             frame = SETTINGS(data[0], data[2], data[3], data[4], data[5])
@@ -142,7 +143,8 @@ class Connection():
 
         # check if ACK
         if setting.is_ack == 1:
-            print("ACK")
+            if self.verbose:
+                print("ACK")
             return
             # TODO: Apply last setting
             # TODO: check payload == None
@@ -195,6 +197,11 @@ class Connection():
         data = int.from_bytes(window_update.payload,'big')
         data = data & 2**32-1
         endpoint.window_size = window_update.payload
+
+    def print_frame(self, frame):
+        print("*********************")
+        print(frame)
+        print("*********************")
 
     def print_bytes(self, pre, s):
         # Nicely prints out raw frames
