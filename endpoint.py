@@ -20,7 +20,15 @@ class Endpoint():
 
         # TODO: code to make sure HDDeflator default size is 4096
         # TODO: what happens if size changes later???
+        # TODO: don't do if proxy
+        '''
+        When used for bidirectional communication, such as in HTTP, the
+        encoding and decoding dynamic tables maintained by an endpoint are
+        completely independent, i.e., the request and response dynamic tables
+        are separate.
+        '''
         self.compressor = nghttp2.HDDeflater()
+        self.decompressor = nghttp2.HDInflater()
 
         self.verbose = verbose
 
@@ -33,8 +41,13 @@ class Endpoint():
         str += "{}\n".format(self.max_header_list_size)
         return str
 
+    # Compresses the headers
+    # data format: [(b"header1",b"value1"),(b"header2",b"value2"),...]
     def compress(self, data):
         return self.compressor.deflate(data)
+
+    def decompress(self, data):
+        return self.decompressor.inflate(data)
 
     # Has the endpoint been seeded with a socket
     def is_set(self):
@@ -53,3 +66,5 @@ class Endpoint():
         self.from_fp = sock.makefile('rb',0)
         self.to_fp = sock.makefile('wb',0)
 
+        
+        

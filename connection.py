@@ -14,7 +14,6 @@ STREAM_ERROR = 2
 
 # Class that handles a connections
 # TODO: multiprocessing???
-# TODO: I think I confused server and proxy in some points...
 class Connection():
     def __init__(self, sock, verbose=False):
         self.client = endpoint.Endpoint(sock=sock, verbose=verbose)
@@ -26,6 +25,7 @@ class Connection():
 
     # TODO: this
     def _exit(self):
+        print("Something went wrong...")
         pass
 
     # Checks for the client's HTTP/2 preface
@@ -33,7 +33,7 @@ class Connection():
     def _preface(self):
         data = self.client.recv(24)
         if data != PREFACE:
-            f = RST_STREAM(error_code=RST_STREAM.PROTOCOL_ERROR)
+            f = RST_STREAM(error_code=PROTOCOL_ERROR)
             client.send(f)
             return CONNECTION_ERROR
 
@@ -42,18 +42,18 @@ class Connection():
         if data[1] == HEADERS.ftype: # 1
             frame = HEADERS(data[0], data[2], data[3], data[4], data[5])
             if self.verbose:
-                self.print_bytes("recv (HEADER)", frame.raw_frame())
+                #self.print_bytes("recv (HEADER)", frame.raw_frame())
                 self.print_frame(frame)
             err = self.do_HEADERS(frame, endpoint)
         elif data[1] == SETTINGS.ftype: # 4
             frame = SETTINGS(data[0], data[2], data[3], data[4], data[5])
             if self.verbose:
-                self.print_bytes("recv (SETTINGS)", frame.raw_frame())
+                self.print_frame(frame)
             err = self.do_SETTINGS(frame, endpoint)
         elif data[1] == WINDOW_UPDATE.ftype: # 8
             frame = WINDOW_UPDATE(data[0], data[2], data[3], data[4], data[5])
             if self.verbose:
-                self.print_bytes("recv (WINDOW UPDATE)", frame.raw_frame())
+                self.print_frame(frame)
             err = self.do_WINDOW_UPDATE(frame, endpoint)
         else:
             print("UNKNOWN TYPE:", data)
@@ -100,13 +100,11 @@ class Connection():
         # TODO: can we move this? (prob ties in with above)
 
         # Decompress the header
-        inflater = nghttp2.HDInflater()
-        # TODO: should we add this back?
-        hdrs = inflater.inflate(headers.header_block_fragment)
+        hdrs = endpoint.decompress(headers.header_block_fragment)
         hdrs = dict(hdrs)
         if self.verbose:
             for k in hdrs:
-                print("\t\t",k,":",hdrs[k])
+                print("\t{} : {}".format(k,hdrs[k]))
         
         if hdrs[b":method"] == b"CONNECT": # What we expect
             # TODO: must be client
@@ -130,12 +128,19 @@ class Connection():
             self.server.set_sock(sock)
             self.active_from_fps.append(self.server.from_fp)
 
-            # TODO: Do I need one of these for each endpoint-proxy connection?
-            payload = self.proxy.compress([(b":status",b"200")])
-            print(payload)
-            response = HEADERS(flags=HEADERS.END_HEADERS, sid=headers.sid,
-                               payload=payload)
-            endpoint.send(response)
+            self.server.startConnection()
+
+            payload = self.server.compress(hdrs)
+            request = HEADERS(
+                flags=headers.flags, sid=
+
+            # Send back the 200
+            payload = self.client.compress([(b":status",b"200")])
+            response = HEADERS(
+                flags=HEADERS.END_HEADERS, sid=headers.sid, payload=payload)
+            self.client.send(response)
+
+
 
     def do_SETTINGS(self, setting, endpoint):
         # TODO: Do we drop the entire packet over one bad iden/val key?
@@ -143,8 +148,6 @@ class Connection():
 
         # check if ACK
         if setting.is_ack == 1:
-            if self.verbose:
-                print("ACK")
             return
             # TODO: Apply last setting
             # TODO: check payload == None
@@ -168,7 +171,7 @@ class Connection():
                     goaway = GOAWAY()
                     endpoint.send(goaway)
                     rst = RST_STREAM(sid=setting.sid, 
-                                     error_code=RST_STREAM.FLOW_CONTROL_ERROR)
+                                     error_code=FLOW_CONTROL_ERROR)
                     endpoint.send(rst)
                     return CONNECTION_ERROR
                 endpoint.initial_window_size = val
@@ -177,7 +180,7 @@ class Connection():
                     goaway = GOAWAY()
                     endpoint.send(goaway)
                     rst = RST_STREAM(sid=setting.sid, 
-                                     error_code=RST_STREAM.PROTOCOL_ERROR)
+                                     error_code=PROTOCOL_ERROR)
                     endpoint.send(rst)
                     return CONNECTION_ERROR
                 endpoint.max_frame_size = val
@@ -199,9 +202,8 @@ class Connection():
         endpoint.window_size = window_update.payload
 
     def print_frame(self, frame):
-        print("*********************")
         print(frame)
-        print("*********************")
+        print("")
 
     def print_bytes(self, pre, s):
         # Nicely prints out raw frames

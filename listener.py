@@ -29,7 +29,7 @@ def start_up(args):
     # Sanity check that we're running right protocol
     protocol = conn.selected_npn_protocol()
     print("Running: " + protocol)
-    print("Correct: " + str(protocol == PROTOCOL))
+    print("Correct: {}\n".format(str(protocol == PROTOCOL)))
 
     # Begin our connection
     c = connection.Connection(conn, verbose=args["verbose"])
